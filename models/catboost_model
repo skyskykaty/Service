@@ -1,0 +1,25 @@
+from catboost import CatBoostClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.metrics import f1_score
+
+def train_catboost(X, Y):
+    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+
+    base_model = CatBoostClassifier(
+        iterations=300,
+        learning_rate=0.1,
+        depth=6,
+        verbose=100,
+        random_seed=42,
+        task_type="GPU",
+        loss_function="Logloss"
+    )
+
+    ovr_model = OneVsRestClassifier(base_model)
+    ovr_model.fit(X_train, y_train)
+
+    y_pred = ovr_model.predict(X_test)
+    print("F1 (micro):", f1_score(y_test, y_pred, average='micro'))
+    print("F1 (macro):", f1_score(y_test, y_pred, average='macro'))
+    return ovr_model
