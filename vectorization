@@ -1,0 +1,29 @@
+from sklearn.preprocessing import MultiLabelBinarizer, OneHotEncoder, StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from scipy.sparse import hstack, csr_matrix
+import numpy as np
+
+def vectorize_features(df, df_emb_column='defects_text_describtion_emb_2'):
+    X_text_arr = np.vstack(df[df_emb_column].values).astype(np.float32)
+    X_text = csr_matrix(X_text_arr)
+
+    mlb = MultiLabelBinarizer()
+    X_codes = mlb.fit_transform(df['defect_codes'])
+
+    cat_features = df[['model', 'type', 'rep_type']]
+    encoder = OneHotEncoder(sparse_output=True)
+    X_cat = encoder.fit_transform(cat_features)
+
+    num_features = df[['client_avg_cost', 'user_avg_cost', 'user_call_freq']]
+    imputer = SimpleImputer(strategy='mean')
+    X_num_imputed = imputer.fit_transform(num_features)
+    scaler = StandardScaler()
+    X_num = scaler.fit_transform(X_num_imputed)
+
+    tfidf_vectorizer = TfidfVectorizer()
+    X_tfidf = tfidf_vectorizer.fit_transform(df['user_top10_defects'])
+
+    X = hstack([X_text, X_codes, X_cat, X_num, X_tfidf])
+
+    return X, mlb
