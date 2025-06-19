@@ -1,0 +1,14 @@
+def add_user_features(df):
+    df['client_avg_cost'] = df.groupby('client')['cost '].transform('mean')
+    df['user_avg_cost'] = df.groupby('user')['cost '].transform('mean')
+    df['user_call_freq'] = df.groupby('user')['user'].transform('count')
+    return df
+
+def build_user_defect_dict(df):
+    df_exploded = df[['user', 'defect_codes']].explode('defect_codes').dropna()
+    user_defects = df_exploded.groupby('user')['defect_codes'].value_counts()
+    user_defects_dict = {}
+    for user, group in user_defects.groupby(level=0):
+        top_codes = group.droplevel(0).nlargest(10).index.tolist()
+        user_defects_dict[user] = top_codes
+    return user_defects_dict
