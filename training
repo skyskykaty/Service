@@ -1,8 +1,8 @@
-from preprocessing import *
-from feature_engineering import *
+from feature_engineering import add_user_features, build_user_defect_dict
 from vectorization import vectorize_features
 from models.logistic_model import train_logistic_regression
 from models.catboost_model import train_catboost
+from preprocessing import process_defects, extract_cycles_count, remove_99_defects, extract_defect_codes, replace_defect_codes_with_description, encode_list_column_mean_embedding
 
 # Загрузка данных
 df = pd.read_csv('your_data.csv')
