@@ -45,12 +45,8 @@ def predict(json_data, model, user_defects_dict):
 
     # Предсказания (вероятности)
     y_pred_prob = model.predict_proba(X)
-
-    # Если нужны метки, можно порог выбрать или взять top-k
     threshold = 0.5
     y_pred = (y_pred_prob >= threshold).astype(int)
-
-    # Декодируем обратно в дефекты
     predicted_labels = mlb.inverse_transform(y_pred)
 
     return predicted_labels, y_pred_prob
