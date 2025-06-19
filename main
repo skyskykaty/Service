@@ -1,0 +1,66 @@
+import json
+import pandas as pd
+import numpy as np
+from preprocessing import process_defects, extract_cycles_count, extract_defect_codes, replace_defect_codes_with_description, encode_list_column_mean_embedding, model_emb
+from feature_engineering import add_user_features, build_user_defect_dict
+from vectorization import vectorize_features
+from models.logistic_model import train_logistic_regression
+from sklearn.preprocessing import MultiLabelBinarizer
+from input_json import json_df
+
+def preprocess_and_feature_engineer(df, user_defects_dict):
+
+    # Обработка дефектов
+    df['processed_defects'] = df['defects'].apply(process_defects)
+    df['cycles_count'] = df['processed_defects'].apply(extract_cycles_count)
+    df['defect_codes'] = df['processed_defects'].apply(extract_defect_codes)
+
+    # df_transl = pd.read_csv('defects_translation.csv')
+    # df['defect_desc'] = df['defect_codes'].apply(lambda x: replace_defect_codes_with_description(x, df_transl))
+
+    # Создаем эмбеддинги дефектов
+    df['defects_text_describtion_emb_2'] = encode_list_column_mean_embedding(df, 'defect_codes', model_emb)
+
+    # Добавляем фичи пользователя
+    df = add_user_features(df)
+
+    # Создаем top10 дефектов пользователя
+    df['user_top10_defects'] = df['user'].apply(lambda u: ' '.join(user_defects_dict.get(u, [])))
+
+    return df
+
+def load_model(path='logistic_model.pkl'):
+    model = joblib.load(path)
+    return model
+
+def predict(json_data, model, user_defects_dict):
+    # Преобразуем json в df
+    df = json_to_df(json_data)
+
+    # Обогащаем и препроцессим
+    df = preprocess_and_feature_engineer(df, user_defects_dict)
+
+    # Векторизация
+    X, mlb = vectorize_features(df)
+
+    # Предсказания (вероятности)
+    y_pred_prob = model.predict_proba(X)
+
+    # Если нужны метки, можно порог выбрать или взять top-k
+    threshold = 0.5
+    y_pred = (y_pred_prob >= threshold).astype(int)
+
+    # Декодируем обратно в дефекты
+    predicted_labels = mlb.inverse_transform(y_pred)
+
+    return predicted_labels, y_pred_prob
+
+if __name__ == '__main__':
+    
+    # Загружаем модель
+    model = load_model()
+
+    # Предсказание
+    preds, probs = predict(json_df, model, user_defects_dict)
+
+    print("Предсказанные дефекты:", preds)
