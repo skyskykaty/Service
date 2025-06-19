@@ -1,0 +1,32 @@
+from preprocessing import *
+from feature_engineering import *
+from vectorization import vectorize_features
+from models.logistic_model import train_logistic_regression
+from models.catboost_model import train_catboost
+
+# Загрузка данных
+df = pd.read_csv('your_data.csv')
+df_transl = pd.read_excel('def_transl.xlsx')
+
+# Препроцессинг
+df['defects'] = df['defects'].astype(str).apply(process_defects)
+df[['cycle_counts', 'defects']] = df['defects'].apply(extract_cycles_count)
+df['defects'] = df['defects'].apply(remove_99_defects)
+df['defect_codes'] = df['defects'].apply(extract_defect_codes)
+df['defects_text_describtion'] = df['defects'].apply(lambda x: replace_defect_codes_with_description(x, df_transl))
+df['defects_text_describtion_emb_2'] = encode_list_column_mean_embedding(df, 'defects_text_describtion', model_emb)
+
+# Фичи
+df = add_user_features(df)
+user_defects_dict = build_user_defect_dict(df)
+df['user_top10_defects'] = df['user'].apply(lambda x: ' '.join(user_defects_dict.get(x, [])))
+
+# Таргет
+df['specification_labels'] = df['specification'].str.split(',')
+
+# Векторизация
+X, target_mlb = vectorize_features(df)
+Y = target_mlb.fit_transform(df['specification_labels'])
+
+# Обучение логистической регрессии
+model_log = train_logistic_regression(X, Y)
