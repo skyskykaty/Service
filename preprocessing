@@ -1,0 +1,140 @@
+import pandas as pd
+import numpy as np
+import re
+from tqdm import tqdm
+from sentence_transformers import SentenceTransformer
+
+
+def process_defects(defect_str): -> list
+    '''
+    # преобразовывает строку с дефектами в список дефектов вида ['XX-YY (комментарий), ...]
+    # обрабатывает скобки в скобках
+    # возвращает список дефектов
+    '''
+    defect_str = str(defect_str)
+
+    # Обрпабатываем вложенные скобки
+    result = []
+    buffer = []
+    open_parentheses = 0
+
+    for char in defect_str:
+        if char == '(':
+            if open_parentheses > 0:
+                buffer.append(char)
+            open_parentheses += 1
+            if open_parentheses == 1:
+                buffer.append('(')  # Добавляем первую скобку
+        elif char == ')':
+            open_parentheses -= 1
+            if open_parentheses > 0:
+                buffer.append(char)
+            elif open_parentheses == 0:
+                buffer.append(')')
+                result.append(''.join(buffer).strip())
+                buffer = []
+        elif char == ',' and open_parentheses == 0:
+            if buffer:
+                result.append(''.join(buffer).strip())
+                buffer = []
+        else:
+            buffer.append(char)
+
+    if buffer:
+        result.append(''.join(buffer).strip())
+
+    return result
+
+def extract_cycles_count(defect_list):
+    '''
+    переносит количество включений в отдельный столбец
+    возвращает список дефектов без количества включений, количество включений в отдельном столбце
+    '''
+    if not isinstance(defect_list, list):
+        return pd.Series([None, defect_list])
+
+    cycle_count = None
+    cleaned_defects = []
+
+    for d in defect_list:
+        d_clean = d.strip()
+
+        # Если элемент начинается с "88" (учтём, что могут быть варианты "88", "88-XX", и т.п.)
+        if d_clean.startswith("88"):
+            match = re.search(r'\((\d+)\+?\)', d_clean)
+            if match:
+                cycle_count = int(match.group(1))
+                # Не добавляем этот элемент в итоговый список дефектов
+                continue
+
+        cleaned_defects.append(d)
+
+    return pd.Series([cycle_count, cleaned_defects])
+
+def extract_defect_codes(defects):
+    '''
+    создает список кодов дефектов без комментариев
+    '''
+    if not defects:
+        return []
+    return list({re.findall(r'\d{2}-\d{2}', d)[0] for d in defects if re.findall(r'\d{2}-\d{2}', d)})
+
+def replace_defect_codes_with_description(defect_list, df_transl):
+    """
+    Заменяет коды дефектов вида 'XX-YY' на текст вида 'описание_XX - описание_YY',
+    сохраняя комментарий (если есть в скобках).
+
+    Parameters:
+        defect_list (list of str): строки вида 'XX-YY (комментарий)'
+        df_transl (pd.DataFrame): содержит колонки 'code', 'col1', 'col2'
+
+    Returns:
+        list of str: тексты с заменёнными кодами, готовые для векторизации
+    """
+    if not isinstance(defect_list, list):
+        return []
+
+    # Создаём словарь: XX-YY -> "описание XX - описание YY"
+    code_to_desc = {}
+    for _, row in df_transl.iterrows():
+        code = row["code"]
+        desc = f"{row['col1']} - {row['col2']}"
+        code_to_desc[code] = desc
+
+    result = []
+    for defect in defect_list:
+        match = re.match(r"(\d{2}-\d{2})(?:\s*\((.*?)\))?", defect)
+        if match:
+            code = match.group(1)
+            comment = match.group(2)
+            description = code_to_desc.get(code, code)
+            if comment:
+                result.append(f"{description} ({comment})")
+            else:
+                result.append(description)
+        else:
+            # если код не распознан, оставляем строку как есть
+            result.append(defect)
+
+    return result
+
+def encode_list_column_mean_embedding(df, list_col, model_emb):
+    def mean_embedding(texts):
+
+        if not texts:
+            return np.zeros(model_emb.get_sentence_embedding_dimension())
+        if isinstance(texts, str):
+            texts = [texts]
+        embeddings = model_emb.encode(texts, show_progress_bar=False)
+
+        return np.mean(embeddings, axis=0)
+
+    tqdm.pandas(desc=f"BERT среднее по списку в '{list_col}'")
+    return df[list_col].progress_apply(mean_embedding)
+
+def get_top_defects(user):
+    codes = user_defects_dict.get(user, [])
+    return ' '.join(codes)
+
+
+model_emb = SentenceTransformer('DeepPavlov/rubert-base-cased-sentence')
